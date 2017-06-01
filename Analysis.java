@@ -143,19 +143,19 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 
 	@Override
 	protected void flowThrough(AWrapper inWrapper, Unit op,
-			List<AWrapper> fallOutWrappers /*if continues at next statement?*/
-			, List<AWrapper> branchOutWrappers/*if doesnt continue at following statement?*/) {
+			List<AWrapper> fallOutWrappers /*if continues not at the next statement?*/
+			, List<AWrapper> branchOutWrappers/*if doesnt continue at next statement?*/) {
 		/*meetCopy(Manager man, Tcons1 c)
 		Returns a new
  		abstract element that contains (an over-approximation of)
   		the set-intersection of this with the constraint in c.*/
-		
+
 		/* A Tcons1 represents a constraint over variables denoted
 		   by name in an environment.
 		 	A Tcons1 is implemented as a pair containing a Tcons0 and
- 			an Environment, manipulated in conjunction. Direct access 
+ 			an Environment, manipulated in conjunction. Direct access
  		to the fields is prohibited, to avoid desynchronizing them.*/
-		
+
 		//use MpqScalar as constants
 
 		Stmt s = (Stmt) op;
@@ -167,72 +167,81 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 			/* TODO: handle assignment */
 			if (rhs instanceof JMulExpr) {
 				//modify the AWrapper stuff
-				
-				//make an apron Variable from lhs, for leftMember = lhs-rhs
-				if (lhs instanceof JimpleLocal){
+
+				//make an apron Variable from lhs, this is never used
+				/*if (lhs instanceof JimpleLocal){
 					Texpr1VarNode leftVariable = Texpr1VarNode(( (JimpleLocal) lhs).getName());
-				}
+				}*/
 				//build rhs expression with apron Texpr1BinNode
 				Value op1 = ((JMulExpr) rhs).getOp1();
 				Value op2 = ((JMulExpr) rhs).getOp2();
-				
-				if (isIntValue(op1)){
-					
+				//check if the operands are integers or variables and asign correspondingly
+				Texpr1Node lAr;
+				if (isIntValue(op1.toString())){
+						lAr = Texpr1CstNode(new MpqScalar(Integer.parseInt(op1.toString()))));
 				}else{
-					
+						lAr = new Texpr1VarNode(op1.toString());
 				}
-				//build leftMember for Tcons1
-				Texpr1BinNode(int o, Texpr1Node lAr, Texpr1Node rAr);
-				//lhs - rhs
-				/* Texpr1Intern objects can be converted from and to
-				*Texpr1Node concrete expression trees for construction and inspection.*/
-				Texpr1Intern leftMember = 
-				//build constraint with apron Tcons1
+				Texpr1Node rAr;
+				if (isIntValue(op2.toString())){
+						rAr = Texpr1CstNode(new MpqScalar(Integer.parseInt(op2.toString()))));
+				}else{
+						rAr = new Texpr1VarNode(op2.toString());
+				}
 
-				Tcons1 constraint = Tcons1(0, leftMember); //0 for EQ
-				
-				//add constraint to branchOutWrappers
-				
+				//build op1*op2 in Apron
+				Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_MUL, lAr, rAr);
+
+				//build Texpr1Intern objects to be able to add it to Abstract1
+				Texpr1Intern forConstr = new Texpr1Intern(env, ApronRhs);
+
+				//add constraint to inWrapper, assigns forConstr to lhs
+				inWrapper.get().assign(man, lhs.toString(), forConstr, null);
+
 			}else if(rhs instanceof JSubExpr) {
 				//modify the AWrapper stuff
-				
+
 			}else if(rhs instanceof JAddExpr) {
 				//modify the AWrapper stuff
-				
+
 			}else{
 				//go to top or whatever. Do we have to handle this case?
+				//throw some error?
 			}
-			
+
 
 		} else if (s instanceof JIfStmt) {
 			IfStmt ifStmt = (JIfStmt) s;
 			/* TODO: handle if statement*/
 			Value cond = ifStmt.getCondition();
+			if(cond instanceof AbstractJimpleIntBinopExpr){
+
+			}
 			if (cond instanceof JEqExpr) {
 				//modify the AWrapper stuff
 				//build expression with apron Texpr1BinNode
-				
+
 				//build constraint with apron Tcons1
-				
+
 				/*add constraint to fallOutWrappers or branchOutWrappers
 				 *depending on whether cond is false or true*/
-				
-				
+
+
 			}else if(cond instanceof JGeExpr){
 				//modify the AWrapper stuff
-				
+
 			}else if(cond instanceof JGtExpr){
 				//modify the AWrapper stuff
-				
+
 			}else if(cond instanceof JLeExpr){
 				//modify the AWrapper stuff
-				
+
 			}else if(cond instanceof JLtExpr){
 				//modify the AWrapper stuff
-				
+
 			}else if(cond instanceof JNeExpr){
 				//modify the AWrapper stuff
-				
+
 			}else{
 				//got to top or whatever. Do we have to handle this case?
 			}
@@ -339,4 +348,3 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 	private String class_ints[]; // integer class variables where the method is
 	// defined
 }
-
