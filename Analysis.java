@@ -193,8 +193,8 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 			}else if(rhs instanceof JSubExpr) {
 				//modify the AWrapper stuff
 				//build rhs expression with apron Texpr1BinNode
-				Value op1 = ((JMulExpr) rhs).getOp1();
-				Value op2 = ((JMulExpr) rhs).getOp2();
+				Value op1 = ((JSubExpr) rhs).getOp1();
+				Value op2 = ((JSubExpr) rhs).getOp2();
 				//check if the operands are integers or variables and asign correspondingly
 				Texpr1Node lAr;
 				if (isIntValue(op1){
@@ -225,8 +225,8 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 			}else if(rhs instanceof JAddExpr) {
 				//modify the AWrapper stuff
 				//build rhs expression with apron Texpr1BinNode
-				Value op1 = ((JMulExpr) rhs).getOp1();
-				Value op2 = ((JMulExpr) rhs).getOp2();
+				Value op1 = ((JAddExpr) rhs).getOp1();
+				Value op2 = ((JAddExpr) rhs).getOp2();
 				//check if the operands are integers or variables and asign correspondingly
 				Texpr1Node lAr;
 				if (isIntValue(op1){
@@ -256,26 +256,14 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 
 			}else if(rhs instanceof IntConstant){
 				//modify the AWrapper stuff
-				//build rhs expression with apron Texpr1BinNode
-				Value op1 = ((JMulExpr) rhs).getOp1();
-				Value op2 = ((JMulExpr) rhs).getOp2();
-				//check if the operands are integers or variables and asign correspondingly
-				Texpr1Node lAr;
-				if (isIntValue(op1){
-						lAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op1.toString()))));
-				}else{
-						lAr = new Texpr1VarNode(op1.toString());
-				}
-				Texpr1Node rAr;
-				if (isIntValue(op2){
-						rAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op2.toString()))));
-				}else{
-						rAr = new Texpr1VarNode(op2.toString());
-				}
+				//cast to IntConstant
+				Value Rhs = ((IntConstant)rhs);
+				//build rhs expression with apron Texpr1CstNode
+				//we know that the operand is an integer
+				Texpr1Node Ar = new Texpr1CstNode(new MpqScalar(Integer.parseInt(Rhs.toString()))));
 
-				//build op1*op2 in Apron
-				Texpr1BinNode rightExpr = new Texpr1BinNode(Texpr1BinNode.OP_MUL, lAr, rAr);
-				Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_SUB, leftVariable, rightExpr);
+				//build lhs-rhs in Apron
+				Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_SUB, leftVariable, Ar);
 
 				//build Texpr1Intern objects to be able to add it to Abstract1
 				Texpr1Intern forConstr = new Texpr1Intern(env, ApronRhs);
@@ -288,26 +276,14 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 
 			}else if(rhs instanceof JimpleLocal){
 				//modify the AWrapper stuff
-				//build rhs expression with apron Texpr1BinNode
-				Value op1 = ((JMulExpr) rhs).getOp1();
-				Value op2 = ((JMulExpr) rhs).getOp2();
-				//check if the operands are integers or variables and asign correspondingly
-				Texpr1Node lAr;
-				if (isIntValue(op1){
-						lAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op1.toString()))));
-				}else{
-						lAr = new Texpr1VarNode(op1.toString());
-				}
-				Texpr1Node rAr;
-				if (isIntValue(op2){
-						rAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op2.toString()))));
-				}else{
-						rAr = new Texpr1VarNode(op2.toString());
-				}
+				//cast to JimpleLocal
+				Value Rhs = ((JimpleLocal)rhs);
+				//build rhs expression with apron Texpr1VarNode
+				//we know that the operand is a variable
+				Texpr1Node Ar = new Texpr1VarNode(Rhs.toString());
 
-				//build op1*op2 in Apron
-				Texpr1BinNode rightExpr = new Texpr1BinNode(Texpr1BinNode.OP_MUL, lAr, rAr);
-				Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_SUB, leftVariable, rightExpr);
+				//build lhs-rhs in Apron
+				Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_SUB, leftVariable, Ar);
 
 				//build Texpr1Intern objects to be able to add it to Abstract1
 				Texpr1Intern forConstr = new Texpr1Intern(env, ApronRhs);
