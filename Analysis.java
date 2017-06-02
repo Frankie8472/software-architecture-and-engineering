@@ -1,37 +1,18 @@
 package ch.ethz.sae;
 
+import java.lang.Integer;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 
-import apron.Abstract1;
-import apron.ApronException;
-import apron.Environment;
-import apron.Manager;
-import apron.Polka;
-import apron.Texpr1Intern;
-import apron.Texpr1VarNode;
-import soot.IntegerType;
-import soot.Local;
-import soot.SootClass;
-import soot.SootField;
-import soot.Unit;
-import soot.Value;
+import apron.*;
+
+import soot.*;
 import soot.jimple.DefinitionStmt;
 import soot.jimple.IfStmt;
+import soot.jimple.IntConstant;
 import soot.jimple.Stmt;
-import soot.jimple.internal.AbstractJimpleFloatBinopExpr;
-import soot.jimple.internal.JAddExpr;
-import soot.jimple.internal.JEqExpr;
-import soot.jimple.internal.JGeExpr;
-import soot.jimple.internal.JGtExpr;
-import soot.jimple.internal.JIfStmt;
-import soot.jimple.internal.JLeExpr;
-import soot.jimple.internal.JLtExpr;
-import soot.jimple.internal.JMulExpr;
-import soot.jimple.internal.JNeExpr;
-import soot.jimple.internal.JSubExpr;
-import soot.jimple.internal.JimpleLocal;
+import soot.jimple.internal.*;
 import soot.jimple.toolkits.annotation.logic.Loop;
 import soot.toolkits.graph.LoopNestTree;
 import soot.toolkits.graph.UnitGraph;
@@ -44,6 +25,14 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 	private static final int WIDENING_THRESHOLD = 6;
 
 	private HashMap<Unit, Counter> loopHeads, backJumps;
+
+	public static Manager man;
+	public static Environment env;
+	public UnitGraph g;
+	public String local_ints[]; // integer local variables of the method
+	public static String reals[] = { "x" };
+	public SootClass jclass;
+	private String class_ints[]; // integer class variables where the method is defined
 
 	private void recordIntLocalVars() {
 
@@ -110,7 +99,6 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 		for (int i = 0; i < class_ints.length; i++) {
 			ints[local_ints.length + i] = class_ints[i];
 		}
-
 		env = new Environment(ints, reals);
 	}
 
@@ -143,226 +131,357 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 
 	@Override
 	protected void flowThrough(AWrapper inWrapper, Unit op,
-			List<AWrapper> fallOutWrappers /*else*/
-			, List<AWrapper> branchOutWrappers/*if==True*/) {
+			List<AWrapper> fallOutWrappers, List<AWrapper> branchOutWrappers) {
 
 		Stmt s = (Stmt) op;
 
+		// Handle definition statement
 		if (s instanceof DefinitionStmt) {
 			DefinitionStmt sd = (DefinitionStmt) s;
 			Value lhs = sd.getLeftOp();
 			Value rhs = sd.getRightOp();
-			/* TODO: handle assignment */
-			//make an apron Variable from lhs
-			Texpr1VarNode leftVariable;
+
+			// Handle left side of expr
+            Texpr1Node ApronLhs = null;
 			if (lhs instanceof JimpleLocal){
-				Texpr1VarNode leftVariable = new Texpr1VarNode(( (JimpleLocal) lhs).getName());
-			}
-			if (rhs instanceof JMulExpr) {
-				//modify the AWrapper stuff
-				//build rhs expression with apron Texpr1BinNode
-				Value op1 = ((JMulExpr) rhs).getOp1();
-				Value op2 = ((JMulExpr) rhs).getOp2();
-				//check if the operands are integers or variables and asign correspondingly
-				Texpr1Node lAr;
-				if (isIntValue(op1){
-						lAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op1.toString()))));
-				}else{
-						lAr = new Texpr1VarNode(op1.toString());
-				}
-				Texpr1Node rAr;
-				if (isIntValue(op2){
-						rAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op2.toString()))));
-				}else{
-						rAr = new Texpr1VarNode(op2.toString());
-				}
+				ApronLhs = new Texpr1VarNode(lhs.toString());
+			} else {
+                System.err.println("Left side is no instance of JimpleLocal");
+            }
 
-				//build op1*op2 in Apron
-				Texpr1BinNode rightExpr = new Texpr1BinNode(Texpr1BinNode.OP_MUL, lAr, rAr);
-				Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_SUB, leftVariable, rightExpr);
+			// Handle right side of expr
+                // Handle multiplication expr
+            if (rhs instanceof JMulExpr) {
+                Value op1 = ((JMulExpr) rhs).getOp1();
+                Value op2 = ((JMulExpr) rhs).getOp2();
+                Texpr1Node lArg = null;
+                Texpr1Node rArg = null;
+                if (op1 instanceof IntConstant){
+                    lArg = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op1.toString())));
+                } else if (op1 instanceof JimpleLocal){
+                    lArg = new Texpr1VarNode(op1.toString());
 
-				//build Texpr1Intern objects to be able to add it to Abstract1
-				Texpr1Intern forConstr = new Texpr1Intern(env, ApronRhs);
+                } else {
+                    System.out.print("op1 is instance of unknown");
+                }
 
-				//make constraint to add to constraints in inWrapper
-				Tcons1 constraint = Tcons1(Tcons1.EQ, forConstr);
+                if (op2 instanceof IntConstant){
+                    rArg = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op2.toString())));
+                } else if (op1 instanceof JimpleLocal){
+                    rArg = new Texpr1VarNode(op2.toString());
 
-				//add constraint to inWrapper, assigns forConstr to lhs
-				inWrapper.set(inWrapper.get().meetCopy(man, constraint));
+                } else {
+                    System.out.print("op2 is instance of unknown");
+                }
+                if (lArg != null && rArg != null && ApronLhs != null) {
+                    Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_MUL, lArg, rArg);
+                    Texpr1BinNode ApronRhs2zero = new Texpr1BinNode(Texpr1BinNode.OP_SUB, ApronRhs, ApronLhs);
+                    Tcons1 constraint = new Tcons1(Tcons1.EQ, new Texpr1Intern(env, ApronRhs2zero));
 
-			}else if(rhs instanceof JSubExpr) {
-				//modify the AWrapper stuff
-				//build rhs expression with apron Texpr1BinNode
-				Value op1 = ((JSubExpr) rhs).getOp1();
-				Value op2 = ((JSubExpr) rhs).getOp2();
-				//check if the operands are integers or variables and asign correspondingly
-				Texpr1Node lAr;
-				if (isIntValue(op1){
-						lAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op1.toString()))));
-				}else{
-						lAr = new Texpr1VarNode(op1.toString());
-				}
-				Texpr1Node rAr;
-				if (isIntValue(op2){
-						rAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op2.toString()))));
-				}else{
-						rAr = new Texpr1VarNode(op2.toString());
-				}
+                    try {
+                        fallOutWrappers.get(0).set(inWrapper.get().meetCopy(man, constraint));
+                    } catch (ApronException e) {
+                        e.printStackTrace();
+                    }
+                }
 
-				//build op1*op2 in Apron
-				Texpr1BinNode rightExpr = new Texpr1BinNode(Texpr1BinNode.OP_SUB, lAr, rAr);
-				Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_SUB, leftVariable, rightExpr);
+			} else if (rhs instanceof JAddExpr) {        // Handle addition expr
+                Value op1 = ((JAddExpr) rhs).getOp1();
+                Value op2 = ((JAddExpr) rhs).getOp2();
+                Texpr1Node lArg = null;
+                Texpr1Node rArg = null;
+                if (op1 instanceof IntConstant){
+                    lArg = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op1.toString())));
+                } else if (op1 instanceof JimpleLocal){
+                    lArg = new Texpr1VarNode(op1.toString());
 
-				//build Texpr1Intern objects to be able to add it to Abstract1
-				Texpr1Intern forConstr = new Texpr1Intern(env, ApronRhs);
+                } else {
+                    System.out.print("op1 is instance of unknown");
+                }
 
-				//make constraint to add to constraints in inWrapper
-				Tcons1 constraint = Tcons1(Tcons1.EQ, forConstr);
+                if (op2 instanceof IntConstant){
+                    rArg = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op2.toString())));
+                } else if (op1 instanceof JimpleLocal){
+                    rArg = new Texpr1VarNode(op2.toString());
 
-				//add constraint to inWrapper, assigns forConstr to lhs
-				inWrapper.set(inWrapper.get().meetCopy(man, constraint));
+                } else {
+                    //System.out.print("op2 is instance of unknown");
+                }
+                if (lArg != null && rArg != null && ApronLhs != null) {
+                    Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_ADD, lArg, rArg);
+                    Texpr1BinNode ApronRhs2zero = new Texpr1BinNode(Texpr1BinNode.OP_SUB, ApronRhs, ApronLhs);
+                    Tcons1 constraint = new Tcons1(Tcons1.EQ, new Texpr1Intern(env, ApronRhs2zero));
 
-			}else if(rhs instanceof JAddExpr) {
-				//modify the AWrapper stuff
-				//build rhs expression with apron Texpr1BinNode
-				Value op1 = ((JAddExpr) rhs).getOp1();
-				Value op2 = ((JAddExpr) rhs).getOp2();
-				//check if the operands are integers or variables and asign correspondingly
-				Texpr1Node lAr;
-				if (isIntValue(op1){
-						lAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op1.toString()))));
-				}else{
-						lAr = new Texpr1VarNode(op1.toString());
-				}
-				Texpr1Node rAr;
-				if (isIntValue(op2){
-						rAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op2.toString()))));
-				}else{
-						rAr = new Texpr1VarNode(op2.toString());
-				}
+                    try {
+                        fallOutWrappers.get(0).set(inWrapper.get().meetCopy(man, constraint));
+                    } catch (ApronException e) {
+                        e.printStackTrace();
+                    }
+                }
 
-				//build op1*op2 in Apron
-				Texpr1BinNode rightExpr = new Texpr1BinNode(Texpr1BinNode.OP_ADD, lAr, rAr);
-				Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_SUB, leftVariable, rightExpr);
+			} else if (rhs instanceof JSubExpr){         // Handle subtraction expr
+                Value op1 = ((JSubExpr) rhs).getOp1();
+                Value op2 = ((JSubExpr) rhs).getOp2();
+                Texpr1Node lArg = null;
+                Texpr1Node rArg = null;
+                if (op1 instanceof IntConstant){
+                    lArg = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op1.toString())));
+                } else if (op1 instanceof JimpleLocal){
+                    lArg = new Texpr1VarNode(op1.toString());
 
-				//build Texpr1Intern objects to be able to add it to Abstract1
-				Texpr1Intern forConstr = new Texpr1Intern(env, ApronRhs);
+                } else {
+                    System.out.print("op1 is instance of unknown");
+                }
 
-				//make constraint to add to constraints in inWrapper
-				Tcons1 constraint = Tcons1(Tcons1.EQ, forConstr);
+                if (op2 instanceof IntConstant){
+                    rArg = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op2.toString())));
+                } else if (op1 instanceof JimpleLocal){
+                    rArg = new Texpr1VarNode(op2.toString());
 
-				//add constraint to inWrapper, assigns forConstr to lhs
-				inWrapper.set(inWrapper.get().meetCopy(man, constraint));
-
-			}else if(rhs instanceof IntConstant){
-				//modify the AWrapper stuff
-				//cast to IntConstant
-				Value Rhs = ((IntConstant)rhs);
-				//build rhs expression with apron Texpr1CstNode
-				//we know that the operand is an integer
-				Texpr1Node Ar = new Texpr1CstNode(new MpqScalar(Integer.parseInt(Rhs.toString()))));
-
-				//build lhs-rhs in Apron
-				Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_SUB, leftVariable, Ar);
-
-				//build Texpr1Intern objects to be able to add it to Abstract1
-				Texpr1Intern forConstr = new Texpr1Intern(env, ApronRhs);
-
-				//make constraint to add to constraints in inWrapper
-				Tcons1 constraint = Tcons1(Tcons1.EQ, forConstr);
-
-				//add constraint to inWrapper, assigns forConstr to lhs
-				inWrapper.set(inWrapper.get().meetCopy(man, constraint));
-
-			}else if(rhs instanceof JimpleLocal){
-				//modify the AWrapper stuff
-				//cast to JimpleLocal
-				Value Rhs = ((JimpleLocal)rhs);
-				//build rhs expression with apron Texpr1VarNode
-				//we know that the operand is a variable
-				Texpr1Node Ar = new Texpr1VarNode(Rhs.toString());
-
-				//build lhs-rhs in Apron
-				Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_SUB, leftVariable, Ar);
-
-				//build Texpr1Intern objects to be able to add it to Abstract1
-				Texpr1Intern forConstr = new Texpr1Intern(env, ApronRhs);
-
-				//make constraint to add to constraints in inWrapper
-				Tcons1 constraint = Tcons1(Tcons1.EQ, forConstr);
-
-				//add constraint to inWrapper, assigns forConstr to lhs
-				inWrapper.set(inWrapper.get().meetCopy(man, constraint));
-
-			}else{
-				//go to top or whatever. Do we have to handle this case?
-				//throw some error?
+                } else {
+                    System.out.print("op2 is instance of unknown");
+                }
+                if (lArg != null && rArg != null && ApronLhs != null) {
+                    Texpr1BinNode ApronRhs = new Texpr1BinNode(Texpr1BinNode.OP_SUB, lArg, rArg);
+                    Texpr1BinNode ApronRhs2zero = new Texpr1BinNode(Texpr1BinNode.OP_SUB, ApronRhs, ApronLhs);
+                    Tcons1 constraint = new Tcons1(Tcons1.EQ, new Texpr1Intern(env, ApronRhs2zero));
+                    try {
+                        fallOutWrappers.get(0).set(inWrapper.get().meetCopy(man, constraint));
+                    } catch (ApronException e) {
+                        e.printStackTrace();
+                    }
+                }
+			} else {
+				//System.err.println("Right side is instance of unknown");
 			}
 
-
-		} else if (s instanceof JIfStmt) {
+		// Handle if statement
+        } else if (s instanceof JIfStmt) {
 			IfStmt ifStmt = (JIfStmt) s;
-			/* TODO: handle if statement*/
 			Value cond = ifStmt.getCondition();
-			if(cond instanceof AbstractJimpleIntBinopExpr){
-				//build rhs expression with apron Texpr1BinNode
-				Value op1 = (( AbstractJimpleIntBinopExpr) rhs).getOp1();
-				Value op2 = (( AbstractJimpleIntBinopExpr) rhs).getOp2();
-				//check if the operands are integers or variables and asign correspondingly
-				Texpr1Node lAr;
-				if (isIntValue(op1){
-						lAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op1.toString()))));
-				}else{
-						lAr = new Texpr1VarNode(op1.toString());
-				}
-				Texpr1Node rAr;
-				if (isIntValue(op2){
-						rAr = new Texpr1CstNode(new MpqScalar(Integer.parseInt(op2.toString()))));
-				}else{
-						rAr = new Texpr1VarNode(op2.toString());
-				}
-			}
-			if (cond instanceof JEqExpr) {// lAr == rAr
-				//modify the AWrapper stuff
+            if (cond instanceof JEqExpr){           // Handle ==
+                Value lhs = ((JEqExpr) cond).getOp1();
+                Value rhs = ((JEqExpr) cond).getOp2();
+                Texpr1Node ApronLhs = null;
+                Texpr1Node ApronRhs = null;
 
-				//build lAr-rAr in Apron
-				Texpr1BinNode apronCond = new Texpr1BinNode(Texpr1BinNode.OP_SUB, lAr, rAr);
+                if (lhs instanceof JimpleLocal){
+                    ApronLhs = new Texpr1VarNode(lhs.toString());
+                } else if (lhs instanceof IntConstant){
+                    ApronLhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(lhs.toString())));
 
-				//build Texpr1Intern objects to be able to make Tcons1
-				Texpr1Intern forConstr = new Texpr1Intern(env, apronCond);
+                } else {
+                    System.err.println("lhs is instance of unknown");
+                }
 
-				//add constraint to inWrapper, assigns forConstr to lhs
-				inWrapper.set(inWrapper.get().meetCopy(man, constraint));
+                if (rhs instanceof JimpleLocal){
+                    ApronRhs = new Texpr1VarNode(rhs.toString());
+                } else if (rhs instanceof IntConstant){
+                    ApronRhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(rhs.toString())));
+                } else {
+                    System.err.println("rhs is instance of unknown");
+                }
 
-				/*add constraint to fallOutWrappers or branchOutWrappers
-				 *depending on whether cond is false or true, need both!*/
-				//cond==True -> branchOutWrappers
-				Tcons1 constraint = Tcons1(Tcons1.EQ, forConstr);
+                if (ApronLhs != null && ApronRhs != null){
+                    Texpr1BinNode Apron2zero = new Texpr1BinNode(Texpr1BinNode.OP_SUB, ApronRhs, ApronLhs);
+                    Texpr1BinNode ApronInvert = new Texpr1BinNode(Texpr1BinNode.OP_SUB, new Texpr1CstNode(), Apron2zero);
+                    Tcons1 branchOutConstraint = new Tcons1(Tcons1.EQ, new Texpr1Intern(env, Apron2zero));
+                    Tcons1 fallOutConstraint = new Tcons1(Tcons1.EQ, new Texpr1Intern(env, ApronInvert));
+                    try {
+                        fallOutWrappers.set(0, new AWrapper(inWrapper.get().meetCopy(man, fallOutConstraint)));
+                        branchOutWrappers.set(0,  new AWrapper(inWrapper.get().meetCopy(man, branchOutConstraint)));
+                    } catch (ApronException e) {
+                        e.printStackTrace();
+                    }
+                }
 
-				//cond==False -> fallOutWrappers
-				Tcons1 constraint = Tcons1(Tcons1.DISEQ, forConstr);
+            } else if (cond instanceof JGeExpr){    // Handle >=
+                Value lhs = ((JGeExpr) cond).getOp1();
+                Value rhs = ((JGeExpr) cond).getOp2();
+                Texpr1Node ApronLhs = null;
+                Texpr1Node ApronRhs = null;
 
-			}else if(cond instanceof JGeExpr){ // >=
-				//modify the AWrapper stuff
+                if (lhs instanceof JimpleLocal){
+                    ApronLhs = new Texpr1VarNode(lhs.toString());
+                } else if (lhs instanceof IntConstant){
+                    ApronLhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(lhs.toString())));
 
-			}else if(cond instanceof JGtExpr){ // >
-				//modify the AWrapper stuff
+                } else {
+                    System.err.println("lhs is instance of unknown");
+                }
 
-			}else if(cond instanceof JLeExpr){ // <=
-				//modify the AWrapper stuff
+                if (rhs instanceof JimpleLocal){
+                    ApronRhs = new Texpr1VarNode(rhs.toString());
+                } else if (rhs instanceof IntConstant){
+                    ApronRhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(rhs.toString())));
+                } else {
+                    System.err.println("rhs is instance of unknown");
+                }
 
-			}else if(cond instanceof JLtExpr){ // <
-				//modify the AWrapper stuff
+                if (ApronLhs != null && ApronRhs != null){
+                    Texpr1BinNode Apron2zero = new Texpr1BinNode(Texpr1BinNode.OP_SUB, ApronLhs, ApronRhs);
+                    Texpr1BinNode ApronInvert = new Texpr1BinNode(Texpr1BinNode.OP_SUB, new Texpr1CstNode(), Apron2zero);
+                    Tcons1 branchOutConstraint = new Tcons1(Tcons1.SUPEQ, new Texpr1Intern(env, Apron2zero));
+                    Tcons1 fallOutConstraint = new Tcons1(Tcons1.SUPEQ, new Texpr1Intern(env, ApronInvert));
+                    try {
+                        fallOutWrappers.set(0, new AWrapper(inWrapper.get().meetCopy(man, fallOutConstraint)));
+                        branchOutWrappers.set(0, new AWrapper(inWrapper.get().meetCopy(man, branchOutConstraint)));
+                    } catch (ApronException e) {
+                        e.printStackTrace();
+                    }
+                }
 
-			}else if(cond instanceof JNeExpr){ // !=
-				//modify the AWrapper stuff
+            } else if (cond instanceof JGtExpr) {   // Handle >
+                Value lhs = ((JGtExpr) cond).getOp1();
+                Value rhs = ((JGtExpr) cond).getOp2();
+                Texpr1Node ApronLhs = null;
+                Texpr1Node ApronRhs = null;
 
-			}else{
-				//got to top or whatever. Do we have to handle this case?
-			}
+                if (lhs instanceof JimpleLocal){
+                    ApronLhs = new Texpr1VarNode(lhs.toString());
+                } else if (lhs instanceof IntConstant){
+                    ApronLhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(lhs.toString())));
+
+                } else {
+                    System.err.println("lhs is instance of unknown");
+                }
+
+                if (rhs instanceof JimpleLocal){
+                    ApronRhs = new Texpr1VarNode(rhs.toString());
+                } else if (rhs instanceof IntConstant){
+                    ApronRhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(rhs.toString())));
+                } else {
+                    System.err.println("rhs is instance of unknown");
+                }
+
+                if (ApronLhs != null && ApronRhs != null){
+                    Texpr1BinNode Apron2zero = new Texpr1BinNode(Texpr1BinNode.OP_SUB, ApronLhs, ApronRhs);
+                    Texpr1BinNode ApronInvert = new Texpr1BinNode(Texpr1BinNode.OP_SUB, new Texpr1CstNode(), Apron2zero);
+                    Tcons1 branchOutConstraint = new Tcons1(Tcons1.SUP, new Texpr1Intern(env, Apron2zero));
+                    Tcons1 fallOutConstraint = new Tcons1(Tcons1.SUP, new Texpr1Intern(env, ApronInvert));
+                    try {
+                        fallOutWrappers.set(0, new AWrapper(inWrapper.get().meetCopy(man, fallOutConstraint)));
+                        branchOutWrappers.set(0, new AWrapper(inWrapper.get().meetCopy(man, branchOutConstraint)));
+                    } catch (ApronException e) {
+                        e.printStackTrace();
+                    }
+                }
+
+            } else if (cond instanceof JLeExpr){    // Handle <=
+                Value lhs = ((JLeExpr) cond).getOp1();
+                Value rhs = ((JLeExpr) cond).getOp2();
+                Texpr1Node ApronLhs = null;
+                Texpr1Node ApronRhs = null;
+
+                if (lhs instanceof JimpleLocal){
+                    ApronLhs = new Texpr1VarNode(lhs.toString());
+                } else if (lhs instanceof IntConstant){
+                    ApronLhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(lhs.toString())));
+
+                } else {
+                    System.err.println("lhs is instance of unknown");
+                }
+
+                if (rhs instanceof JimpleLocal){
+                    ApronRhs = new Texpr1VarNode(rhs.toString());
+                } else if (rhs instanceof IntConstant){
+                    ApronRhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(rhs.toString())));
+                } else {
+                    System.err.println("rhs is instance of unknown");
+                }
+
+                if (ApronLhs != null && ApronRhs != null){
+                    Texpr1BinNode Apron2zero = new Texpr1BinNode(Texpr1BinNode.OP_SUB, ApronRhs, ApronLhs);
+                    Texpr1BinNode ApronInvert = new Texpr1BinNode(Texpr1BinNode.OP_SUB, new Texpr1CstNode(), Apron2zero);
+                    Tcons1 branchOutConstraint = new Tcons1(Tcons1.SUPEQ, new Texpr1Intern(env, Apron2zero));
+                    Tcons1 fallOutConstraint = new Tcons1(Tcons1.SUPEQ, new Texpr1Intern(env, ApronInvert));
+                    try {
+                        fallOutWrappers.set(0, new AWrapper(inWrapper.get().meetCopy(man, fallOutConstraint)));
+                        branchOutWrappers.set(0, new AWrapper(inWrapper.get().meetCopy(man, branchOutConstraint)));
+                    } catch (ApronException e) {
+                        e.printStackTrace();
+                    }
+                }
+
+            } else if (cond instanceof JLtExpr){    // Handle <
+                Value lhs = ((JLtExpr) cond).getOp1();
+                Value rhs = ((JLtExpr) cond).getOp2();
+                Texpr1Node ApronLhs = null;
+                Texpr1Node ApronRhs = null;
+
+                if (lhs instanceof JimpleLocal){
+                    ApronLhs = new Texpr1VarNode(lhs.toString());
+                } else if (lhs instanceof IntConstant){
+                    ApronLhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(lhs.toString())));
+
+                } else {
+                    System.err.println("lhs is instance of unknown");
+                }
+
+                if (rhs instanceof JimpleLocal){
+                    ApronRhs = new Texpr1VarNode(rhs.toString());
+                } else if (rhs instanceof IntConstant){
+                    ApronRhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(rhs.toString())));
+                } else {
+                    System.err.println("rhs is instance of unknown");
+                }
+
+                if (ApronLhs != null && ApronRhs != null){
+                    Texpr1BinNode Apron2zero = new Texpr1BinNode(Texpr1BinNode.OP_SUB, ApronRhs, ApronLhs);
+                    Texpr1BinNode ApronInvert = new Texpr1BinNode(Texpr1BinNode.OP_SUB, new Texpr1CstNode(), Apron2zero);
+                    Tcons1 branchOutConstraint = new Tcons1(Tcons1.SUP, new Texpr1Intern(env, Apron2zero));
+                    Tcons1 fallOutConstraint = new Tcons1(Tcons1.SUP, new Texpr1Intern(env, ApronInvert));
+                    try {
+                        fallOutWrappers.set(0, new AWrapper(inWrapper.get().meetCopy(man, fallOutConstraint)));
+                        branchOutWrappers.set(0,  new AWrapper(inWrapper.get().meetCopy(man, branchOutConstraint)));
+                    } catch (ApronException e) {
+                        e.printStackTrace();
+                    }
+                }
+            } else if (cond instanceof JNeExpr){    // Handle !=
+                Value lhs = ((JNeExpr) cond).getOp1();
+                Value rhs = ((JNeExpr) cond).getOp2();
+                Texpr1Node ApronLhs = null;
+                Texpr1Node ApronRhs = null;
+
+                if (lhs instanceof JimpleLocal){
+                    ApronLhs = new Texpr1VarNode(lhs.toString());
+                } else if (lhs instanceof IntConstant){
+                    ApronLhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(lhs.toString())));
+
+                } else {
+                    System.err.println("lhs is instance of unknown");
+                }
+
+                if (rhs instanceof JimpleLocal){
+                    ApronRhs = new Texpr1VarNode(rhs.toString());
+                } else if (rhs instanceof IntConstant){
+                    ApronRhs = new Texpr1CstNode(new MpqScalar(Integer.parseInt(rhs.toString())));
+                } else {
+                    System.err.println("rhs is instance of unknown");
+                }
+
+                if (ApronLhs != null && ApronRhs != null){
+                    Tcons1[] fallOutConstraints = new Tcons1[2];
+                    Texpr1BinNode Apron2zero = new Texpr1BinNode(Texpr1BinNode.OP_SUB, ApronRhs, ApronLhs);
+                    Texpr1BinNode ApronInvert = new Texpr1BinNode(Texpr1BinNode.OP_SUB, new Texpr1CstNode(), Apron2zero);
+                    Tcons1 branchOutConstraint = new Tcons1(Tcons1.EQ, new Texpr1Intern(env, Apron2zero));
+                    fallOutConstraints[0] = new Tcons1(Tcons1.SUP, new Texpr1Intern(env, Apron2zero));
+                    fallOutConstraints[1] = new Tcons1(Tcons1.SUP, new Texpr1Intern(env, ApronInvert));
+                    try {
+                        fallOutWrappers.set(0, new AWrapper(inWrapper.get().meetCopy(man, fallOutConstraints)));
+                        branchOutWrappers.set(0,  new AWrapper(inWrapper.get().meetCopy(man, branchOutConstraint)));
+                    } catch (ApronException e) {
+                        e.printStackTrace();
+                    }
+                }
+            } else {
+                System.err.println("Cond is instance of unknown");
+            }
+
 		} else {
-			//go to top? or give some other function for loops?
-		}
+            //System.err.println("s is instance of unknown");
+        }
 	}
 
 	@Override
@@ -376,7 +495,6 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 
 	@Override
 	protected AWrapper entryInitialFlow() {
-		//can change the result if needed?
 		Abstract1 top = null;
 		try {
 			top = new Abstract1(man, env);
@@ -452,14 +570,4 @@ public class Analysis extends ForwardBranchedFlowAnalysis<AWrapper> {
 				|| val.getType().toString().equals("short")
 				|| val.getType().toString().equals("byte");
 	}
-
-
-	public static Manager man;
-	public static Environment env;
-	public UnitGraph g;
-	public String local_ints[]; // integer local variables of the method
-	public static String reals[] = { "x" };
-	public SootClass jclass;
-	private String class_ints[]; // integer class variables where the method is
-	// defined
 }
